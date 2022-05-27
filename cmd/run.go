@@ -1,10 +1,16 @@
 package cmd
 
 import (
-	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/vitorfhc/kontainer/container"
+)
+
+var (
+	cntr       *container.Container
+	entrypoint string
+	command    string
 )
 
 var runCmd = &cobra.Command{
@@ -12,16 +18,23 @@ var runCmd = &cobra.Command{
 	Short: "Runs a process in a containerized environment",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		cntr := &container.Container{
-			Entrypoint: []string{"/bin/bash", "-c"},
-			Cmd:        []string{"echo hello world"},
-			Env:        os.Environ(),
-			Namespaces: container.UserNamespace,
+		if entrypoint != "" {
+			cntr.Entrypoint = strings.Split(entrypoint, " ")
 		}
-		cntr.Init()
+
+		if command != "" {
+			cntr.Cmd = strings.Split(command, " ")
+		}
+
+		cntr.Run()
 	},
 }
 
 func init() {
+	cntr = container.NewWithDefaults()
+
+	runCmd.Flags().StringVarP(&entrypoint, "entrypoint", "e", "", "Entrypoint of the container")
+	runCmd.Flags().StringVarP(&command, "cmd", "c", "", "Command to execute")
+
 	rootCmd.AddCommand(runCmd)
 }

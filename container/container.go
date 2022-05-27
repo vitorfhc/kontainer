@@ -2,36 +2,71 @@ package container
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"syscall"
-
-	"github.com/sirupsen/logrus"
 )
 
-// Container is the type that holds all the information about a container
+// Container is the type that holds all the information about a container.
 type Container struct {
-	Entrypoint []string
-	Cmd        []string
-	Env        []string
-	Namespaces uintptr
+	PID          int
+	Namespaces   uintptr
+	Entrypoint   []string
+	Cmd          []string
+	Env          []string
+	UserMapping  []string
+	GroupMapping []string
 }
 
-// Init initializes the container by forking the process and setting the namespaces
-func (c *Container) Init() error {
+// NewWithDefaults returns a container with default values.
+//
+// It inherits all environment variables, uses user and mount namespace,
+// and runs te command "id" with the entrypoint "/bin/bash -c".
+// It also maps the inside root user and group to outside user and group 1000.
+func NewWithDefaults() *Container {
+	return &Container{
+		Env:        os.Environ(),
+		Namespaces: UserNamespace | MountNamespace,
+		Entrypoint: []string{"/bin/bash", "-c"},
+		Cmd:        []string{"id"},
+		UserMapping: []string{
+			"0 1000 1",
+		},
+		GroupMapping: []string{
+			"0 1000 1",
+		},
+	}
+}
+
+// Run initializes the container by forking the process and setting the namespaces.
+func (c *Container) Run() error {
 	forkAttrs := &syscall.ProcAttr{
 		Env:   c.Env,
 		Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
 		Sys: &syscall.SysProcAttr{
-			Unshareflags: c.Namespaces,
+			Unshareflags: c.Namespaces | UserNamespace | MountNamespace,
 		},
 	}
-	forkArgs := []string{os.Args[0], "run", "--child"}
-	pid, err := syscall.ForkExec("/proc/self/exe", forkArgs, forkAttrs)
+
+	execCmd := c.buildExecCommand()
+	pid, err := syscall.ForkExec("/proc/self/exe", execCmd, forkAttrs)
 	if err != nil {
 		errWrapped := fmt.Errorf("Failed to intialize container with ForkExec: %w", err)
 		return errWrapped
 	}
-	logrus.Infof("Initialized container with PID %d", pid)
+	c.PID = pid
+
+	err = c.writeUserMapping()
+	if err != nil {
+		errWrapped := fmt.Errorf("Failed to write user mapping: %w", err)
+		return errWrapped
+	}
+
+	err = c.writeGroupMapping()
+	if err != nil {
+		errWrapped := fmt.Errorf("Failed to write group mapping: %w", err)
+		return errWrapped
+	}
 
 	_, err = syscall.Wait4(pid, nil, 0, nil)
 	if err != nil {
@@ -40,4 +75,38 @@ func (c *Container) Init() error {
 	}
 
 	return nil
+}
+
+func (c *Container) writeUserMapping() error {
+	uidMapPath := fmt.Sprintf("/proc/%d/uid_map", c.PID)
+	toWrite := ""
+	for _, userMapping := range c.UserMapping {
+		toWrite += userMapping + "\n"
+	}
+	err := ioutil.WriteFile(uidMapPath, []byte(toWrite), 0644)
+	return err
+}
+
+func (c *Container) writeGroupMapping() error {
+	gidMapPath := fmt.Sprintf("/proc/%d/gid_map", c.PID)
+	toWrite := ""
+	for _, groupMapping := range c.GroupMapping {
+		toWrite += groupMapping + "\n"
+	}
+	err := ioutil.WriteFile(gidMapPath, []byte(toWrite), 0644)
+	return err
+}
+
+func (c *Container) buildExecCommand() []string {
+	execCommand := []string{os.Args[0], "exec", "--"}
+
+	if len(c.Entrypoint) > 0 {
+		execCommand = append(execCommand, c.Entrypoint...)
+	}
+
+	if len(c.Cmd) > 0 {
+		execCommand = append(execCommand, c.Cmd...)
+	}
+
+	return execCommand
 }

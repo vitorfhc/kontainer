@@ -2,7 +2,7 @@ package container
 
 import "syscall"
 
-// Namespace flags copy from Linux flags
+// Namespace flags copy from Linux flags.
 const (
 	UserNamespace    uintptr = syscall.CLONE_NEWUSER
 	PIDNamespace     uintptr = syscall.CLONE_NEWPID
