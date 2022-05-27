@@ -3,6 +3,7 @@ package cmd
 import (
 	"strings"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/vitorfhc/kontainer/container"
 )
@@ -18,15 +19,22 @@ var runCmd = &cobra.Command{
 	Short: "Runs a process in a containerized environment",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		if entrypoint != "" {
+		if strings.Trim(entrypoint, " ") != "" {
 			cntr.Entrypoint = strings.Split(entrypoint, " ")
 		}
 
-		if command != "" {
+		if strings.Trim(command, " ") != "" {
 			cntr.Cmd = strings.Split(command, " ")
 		}
 
-		cntr.Run()
+		err := cntr.Run()
+		if err != nil {
+			kErr := cntr.Kill()
+			if kErr != nil {
+				logrus.Warn("Failed to kill container: ", kErr)
+			}
+			logrus.Fatalf("Failed to run container: %s", err)
+		}
 	},
 }
 

@@ -62,6 +62,7 @@ func (c *Container) Run() error {
 		return errWrapped
 	}
 
+	// NOT WORKING
 	err = c.writeGroupMapping()
 	if err != nil {
 		errWrapped := fmt.Errorf("Failed to write group mapping: %w", err)
@@ -109,4 +110,10 @@ func (c *Container) buildExecCommand() []string {
 	}
 
 	return execCommand
+}
+
+// Kill sends a SIGKILL to the container main process.
+func (c *Container) Kill() error {
+	err := syscall.Kill(c.PID, syscall.SIGKILL)
+	return err
 }
