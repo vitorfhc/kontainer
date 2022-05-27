@@ -62,7 +62,6 @@ func (c *Container) Run() error {
 		return errWrapped
 	}
 
-	// NOT WORKING
 	err = c.writeGroupMapping()
 	if err != nil {
 		errWrapped := fmt.Errorf("Failed to write group mapping: %w", err)
@@ -89,6 +88,10 @@ func (c *Container) writeUserMapping() error {
 }
 
 func (c *Container) writeGroupMapping() error {
+	// https://unix.stackexchange.com/questions/692177/echo-to-gid-map-fails-but-uid-map-success
+	setGroupsPath := fmt.Sprintf("/proc/%d/setgroups", c.PID)
+	ioutil.WriteFile(setGroupsPath, []byte("deny"), 0644)
+
 	gidMapPath := fmt.Sprintf("/proc/%d/gid_map", c.PID)
 	toWrite := ""
 	for _, groupMapping := range c.GroupMapping {
